@@ -10,22 +10,84 @@ import Cocoa
 import IOBluetooth
 import LaunchAtLogin
 
+let powerUpActionKey = "powerUpAction"
+
+enum PowerUpAction: Int {
+    case remember = 1
+    case always = 2
+    case never = 3
+}
+
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     @IBOutlet weak var statusMenu: NSMenu!
+    @IBOutlet weak var powerUpActionRemember: NSMenuItem!
+    @IBOutlet weak var powerUpActionAlways: NSMenuItem!
+    @IBOutlet weak var powerUpActionNever: NSMenuItem!
     @IBOutlet weak var launchAtLoginMenuItem: NSMenuItem!
 
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let statusItem = NSStatusBar.system.statusItem(
+        withLength: NSStatusItem.variableLength
+    )
+    private var prevState = IOBluetoothPreferenceGetControllerPowerState()
+    private var powerUpAction: PowerUpAction = .remember
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         initStatusItem()
         setLaunchAtLoginState()
         setupNotificationHandlers()
-        setBluetooth(powerOn: true)
+
+        UserDefaults.standard.register(defaults: [
+            powerUpActionKey: PowerUpAction.remember.rawValue
+        ])
+
+        let rawPowerUpAction = UserDefaults.standard.integer(forKey: powerUpActionKey)
+        powerUpAction = PowerUpAction(rawValue: rawPowerUpAction) ?? .always
+
+        if powerUpAction == .remember {
+            powerUpActionRemember.state = NSControl.StateValue.on
+        } else if powerUpAction == .always {
+            powerUpActionAlways.state = NSControl.StateValue.on
+        } else if powerUpAction == .never {
+            powerUpActionNever.state = NSControl.StateValue.on
+        }
     }
 
     // MARK: Click handlers
+
+    @IBAction func powerUpActionRememberClicked(_ sender: NSMenuItem) {
+        powerUpAction = .remember
+        UserDefaults.standard.set(
+            powerUpAction.rawValue,
+            forKey: powerUpActionKey
+        )
+        powerUpActionRemember.state = NSControl.StateValue.on
+        powerUpActionAlways.state = NSControl.StateValue.off
+        powerUpActionNever.state = NSControl.StateValue.off
+    }
+
+    @IBAction func powerUpActionAlwaysClicked(_ sender: NSMenuItem) {
+        powerUpAction = .always
+        UserDefaults.standard.set(
+            powerUpAction.rawValue,
+            forKey: powerUpActionKey
+        )
+        powerUpActionRemember.state = NSControl.StateValue.off
+        powerUpActionAlways.state = NSControl.StateValue.on
+        powerUpActionNever.state = NSControl.StateValue.off
+    }
+
+    @IBAction func powerUpActionNeverClicked(_ sender: NSMenuItem) {
+        powerUpAction = .never
+        UserDefaults.standard.set(
+            powerUpAction.rawValue,
+            forKey: powerUpActionKey
+        )
+        powerUpActionRemember.state = NSControl.StateValue.off
+        powerUpActionAlways.state = NSControl.StateValue.off
+        powerUpActionNever.state = NSControl.StateValue.on
+    }
 
     @IBAction func launchAtLoginClicked(_ sender: NSMenuItem) {
         LaunchAtLogin.isEnabled = !LaunchAtLogin.isEnabled
@@ -42,18 +104,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         [
             NSWorkspace.willSleepNotification: #selector(onPowerDown(note:)),
             NSWorkspace.willPowerOffNotification: #selector(onPowerDown(note:)),
-            NSWorkspace.didWakeNotification: #selector(onPowerUp(note:))
+            NSWorkspace.didWakeNotification: #selector(onPowerUp(note:)),
         ].forEach { notification, sel in
-            NSWorkspace.shared.notificationCenter.addObserver(self, selector: sel, name: notification, object: nil)
+            NSWorkspace.shared.notificationCenter.addObserver(
+                self,
+                selector: sel,
+                name: notification,
+                object: nil
+            )
         }
     }
 
     @objc func onPowerDown(note: NSNotification) {
+        prevState = IOBluetoothPreferenceGetControllerPowerState()
         setBluetooth(powerOn: false)
     }
 
     @objc func onPowerUp(note: NSNotification) {
-        setBluetooth(powerOn: true)
+        if powerUpAction == .always || (powerUpAction == .remember && prevState != 0) {
+            setBluetooth(powerOn: true)
+        }
     }
 
     private func setBluetooth(powerOn: Bool) {
