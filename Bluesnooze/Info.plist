@@ -36,5 +36,7 @@
 	<true/>
 	<key>NSSupportsSuddenTermination</key>
 	<true/>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>$(PRODUCT_NAME) uses bluetooth</string>
 </dict>
 </plist>
